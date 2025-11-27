@@ -44,10 +44,10 @@ def update_checkin():
         # Construct the full table reference
         table_ref = f"{PROJECT_ID}.{DATASET_ID}.{TABLE_ID}"
         
-        # Update the checkin field to "si" for the given email
-        update_query = f"""
-            UPDATE `{table_ref}`
-            SET checkin = 'si'
+        # First, check if the customer exists
+        select_query = f"""
+            SELECT *
+            FROM `{table_ref}`
             WHERE email = @email
         """
         
@@ -57,42 +57,35 @@ def update_checkin():
             ]
         )
         
-        # Execute the update query
-        update_job = client.query(update_query, job_config=job_config)
-        update_job.result()  # Wait for the query to complete
+        select_job = client.query(select_query, job_config=job_config)
+        results = list(select_job.result())
         
-        # Check if any rows were updated
-        if update_job.num_dml_affected_rows == 0:
+        if not results:
             return jsonify({
                 "error": f"No customer found with email: {email}"
             }), 404
         
-        # Fetch the updated row
-        select_query = f"""
-            SELECT *
-            FROM `{table_ref}`
-            WHERE email = @email
-        """
+        # Get the existing row data
+        existing_row = dict(results[0].items())
         
-        select_job = client.query(select_query, job_config=job_config)
-        results = select_job.result()
+        # Update the checkin field
+        existing_row['checkin'] = 'si'
         
-        # Convert results to dictionary
-        updated_row = None
-        for row in results:
-            updated_row = dict(row.items())
-            break
+        # Insert the updated row (BigQuery streaming insert)
+        table = client.get_table(table_ref)
+        errors = client.insert_rows_json(table, [existing_row])
         
-        if updated_row:
+        if errors:
             return jsonify({
-                "success": True,
-                "message": f"Successfully updated checkin for {email}",
-                "updated_row": updated_row
-            }), 200
-        else:
-            return jsonify({
-                "error": "Failed to retrieve updated row"
+                "error": f"Failed to update checkin: {errors}"
             }), 500
+        
+        # Return the updated row
+        return jsonify({
+            "success": True,
+            "message": f"Successfully updated checkin for {email}",
+            "updated_row": existing_row
+        }), 200
             
     except Exception as e:
         return jsonify({
