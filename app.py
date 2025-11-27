@@ -53,10 +53,19 @@ def update_checkin():
         
         # Construct the full table reference
         table_ref = f"{PROJECT_ID}.{DATASET_ID}.{TABLE_ID}"
+        staging_table_ref = f"{PROJECT_ID}.{DATASET_ID}.{TABLE_ID}_staging"
         
-        # First, check if the customer exists
-        select_query = f"""
-            SELECT *
+        # Step 1: Create or replace staging table with all data except the row to update
+        create_staging_query = f"""
+            CREATE OR REPLACE TABLE `{staging_table_ref}` AS
+            SELECT * FROM `{table_ref}`
+            WHERE email != @email
+            UNION ALL
+            SELECT 
+                full_name,
+                email,
+                sbumitted_at,
+                'si' as checkin
             FROM `{table_ref}`
             WHERE email = @email
         """
@@ -67,6 +76,26 @@ def update_checkin():
             ]
         )
         
+        # Execute staging table creation
+        staging_job = client.query(create_staging_query, job_config=job_config)
+        staging_job.result()
+        
+        # Step 2: Replace main table with staging table
+        replace_query = f"""
+            CREATE OR REPLACE TABLE `{table_ref}` AS
+            SELECT * FROM `{staging_table_ref}`
+        """
+        
+        replace_job = client.query(replace_query)
+        replace_job.result()
+        
+        # Step 3: Fetch the updated row
+        select_query = f"""
+            SELECT *
+            FROM `{table_ref}`
+            WHERE email = @email
+        """
+        
         select_job = client.query(select_query, job_config=job_config)
         results = list(select_job.result())
         
@@ -75,14 +104,11 @@ def update_checkin():
                 "error": f"No customer found with email: {email}"
             }), 404
         
-        # Get the existing row data
-        existing_row = dict(results[0].items())
+        # Get the updated row data
+        updated_row = dict(results[0].items())
         
         # Serialize datetime and other non-JSON types
-        serialized_row = {k: serialize_bigquery_value(v) for k, v in existing_row.items()}
-        
-        # Update the checkin field
-        serialized_row['checkin'] = 'si'
+        serialized_row = {k: serialize_bigquery_value(v) for k, v in updated_row.items()}
         
         # Return the updated row
         return jsonify({
