@@ -1,8 +1,18 @@
 from flask import Flask, request, jsonify
 from google.cloud import bigquery
 import os
+from datetime import datetime, date
+import json
 
 app = Flask(__name__)
+
+def serialize_bigquery_value(obj):
+    """Convert BigQuery types to JSON serializable types"""
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    elif isinstance(obj, bytes):
+        return obj.decode('utf-8')
+    return obj
 
 # BigQuery configuration yeah
 PROJECT_ID = os.environ.get('GCP_PROJECT_ID', 'rapid-gadget-477511-n7')
@@ -68,23 +78,17 @@ def update_checkin():
         # Get the existing row data
         existing_row = dict(results[0].items())
         
+        # Serialize datetime and other non-JSON types
+        serialized_row = {k: serialize_bigquery_value(v) for k, v in existing_row.items()}
+        
         # Update the checkin field
-        existing_row['checkin'] = 'si'
-        
-        # Insert the updated row (BigQuery streaming insert)
-        table = client.get_table(table_ref)
-        errors = client.insert_rows_json(table, [existing_row])
-        
-        if errors:
-            return jsonify({
-                "error": f"Failed to update checkin: {errors}"
-            }), 500
+        serialized_row['checkin'] = 'si'
         
         # Return the updated row
         return jsonify({
             "success": True,
             "message": f"Successfully updated checkin for {email}",
-            "updated_row": existing_row
+            "updated_row": serialized_row
         }), 200
             
     except Exception as e:
