@@ -18,19 +18,23 @@ def health_check():
     """Health check endpoint"""
     return jsonify({"status": "healthy", "service": "fenasosa-customer-checkin"}), 200
 
-@app.route('/checkin', methods=['POST'])
+@app.route('/checkin', methods=['GET', 'POST'])
 def update_checkin():
     """
     Update the checkin field for a customer with the given email address
-    Expected JSON body: {"email": "customer@example.com"}
+    GET: ?email=customer@example.com
+    POST: {"email": "customer@example.com"}
     """
     try:
-        # Get email from request
-        data = request.get_json()
-        if not data or 'email' not in data:
-            return jsonify({"error": "Missing 'email' parameter in request body"}), 400
+        # Get email from request (query param for GET, JSON body for POST)
+        if request.method == 'GET':
+            email = request.args.get('email', '').strip()
+        else:
+            data = request.get_json()
+            if not data or 'email' not in data:
+                return jsonify({"error": "Missing 'email' parameter in request body"}), 400
+            email = data['email'].strip()
         
-        email = data['email'].strip()
         if not email:
             return jsonify({"error": "Email parameter cannot be empty"}), 400
 
