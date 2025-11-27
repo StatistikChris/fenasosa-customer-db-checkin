@@ -4,7 +4,7 @@ import os
 
 app = Flask(__name__)
 
-# BigQuery configuration
+# BigQuery configuration yeah
 PROJECT_ID = os.environ.get('GCP_PROJECT_ID', 'rapid-gadget-477511-n7')
 DATASET_ID = os.environ.get('DATASET_ID', 'fenasosa_dataset')
 TABLE_ID = os.environ.get('TABLE_ID', 'clientes')
